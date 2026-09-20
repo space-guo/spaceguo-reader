@@ -8,7 +8,7 @@ header{position:sticky;top:0;z-index:5;background:rgba(2,58,37,.96);color:white;
 main{max-width:1100px;margin:auto;padding:14px}.toolbar{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:12px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
 button,.filebtn{border:0;border-radius:10px;padding:10px 13px;background:#e7e7df;color:#172019;font-weight:700;font-size:14px}.primary,.filebtn{background:var(--g);color:white}.filebtn input{display:none}
 #status{font-size:12px;color:#666;flex:1;min-width:150px}.stage{background:#292b2a;border-radius:16px;min-height:68vh;display:flex;align-items:flex-start;justify-content:center;overflow:auto;padding:12px}
-canvas{display:block;background:white;box-shadow:0 4px 24px #0006;max-width:none}.bottom{display:flex;justify-content:center;align-items:center;gap:10px;padding:12px}.page{font-variant-numeric:tabular-nums;font-weight:700}
+canvas{display:block;background:white;box-shadow:0 4px 24px #0006;max-width:100%;height:auto}.bottom{display:flex;justify-content:center;align-items:center;gap:10px;padding:12px}.page{font-variant-numeric:tabular-nums;font-weight:700}
 .note{background:white;border-radius:16px;padding:12px;margin-top:12px}.note textarea{width:100%;min-height:90px;border:1px solid var(--line);border-radius:10px;padding:10px;font:inherit}
 @media(max-width:600px){main{padding:8px}.stage{border-radius:12px;padding:6px;min-height:64vh}.toolbar{border-radius:12px}.brand{font-size:14px}}
 </style></head><body>
@@ -24,20 +24,20 @@ canvas{display:block;background:white;box-shadow:0 4px 24px #0006;max-width:none
 </main>
 <script>
 pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-let pdf=null,p=1,scale=1.15,rendering=false,bytes=null,key='';
+let pdf=null,p=1,scale=1.15,rendering=false,pending=false,bytes=null,key='',mode='fit';
 const $=id=>document.getElementById(id), canvas=$('canvas'), stage=$('stage');
-async function render(){if(!pdf||rendering)return;rendering=true;$('status').textContent='페이지 렌더링 중…';
-try{const page=await pdf.getPage(p);const base=page.getViewport({scale:1});let s=scale;
-if(window.innerWidth<700)s=Math.min(scale,(stage.clientWidth-12)/base.width);
+async function render(){if(!pdf)return;if(rendering){pending=true;return}rendering=true;$('status').textContent='페이지 렌더링 중…';
+try{const page=await pdf.getPage(p);const base=page.getViewport({scale:1});const availW=Math.max(120,stage.clientWidth-24),availH=Math.max(160,window.innerHeight*.64);let s=scale;
+if(mode==='fit')s=Math.min(availW/base.width,availH/base.height);else if(mode==='width')s=availW/base.width;
 const v=page.getViewport({scale:s});const dpr=Math.min(devicePixelRatio||1,2);canvas.width=Math.floor(v.width*dpr);canvas.height=Math.floor(v.height*dpr);canvas.style.width=Math.floor(v.width)+'px';canvas.style.height=Math.floor(v.height)+'px';
-const ctx=canvas.getContext('2d',{alpha:false});ctx.setTransform(dpr,0,0,dpr,0,0);await page.render({canvasContext:ctx,viewport:v,transform:[dpr,0,0,dpr,0,0],background:'white'}).promise;
+const ctx=canvas.getContext('2d',{alpha:false});await page.render({canvasContext:ctx,viewport:v,transform:[dpr,0,0,dpr,0,0],background:'white'}).promise;
 $('page').textContent=p+' / '+pdf.numPages;$('zoom').textContent=Math.round(s*100)+'%';$('status').textContent='정상 표시 · '+pdf.numPages+'페이지';loadNote();
-}catch(e){$('status').textContent='표시 오류: '+e.message;console.error(e)}finally{rendering=false}}
-$('file').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{$('status').textContent='PDF 불러오는 중…';bytes=new Uint8Array(await f.arrayBuffer());key='sg-note-'+f.name;pdf=await pdfjsLib.getDocument({data:bytes,disableAutoFetch:false,useSystemFonts:true}).promise;p=1;await render()}catch(err){$('status').textContent='PDF 열기 실패: '+err.message;console.error(err)}};
+}catch(e){$('status').textContent='표시 오류: '+e.message;console.error(e)}finally{rendering=false;if(pending){pending=false;render()}}}
+$('file').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{$('status').textContent='PDF 불러오는 중…';bytes=new Uint8Array(await f.arrayBuffer());key='sg-note-'+f.name;pdf=await pdfjsLib.getDocument({data:bytes,disableAutoFetch:false,useSystemFonts:true}).promise;p=1;mode='fit';await render()}catch(err){$('status').textContent='PDF 열기 실패: '+err.message;console.error(err)}};
 $('prev').onclick=()=>{if(pdf&&p>1){saveNote();p--;render()}};$('next').onclick=()=>{if(pdf&&p<pdf.numPages){saveNote();p++;render()}};
-$('plus').onclick=()=>{scale=Math.min(3,scale+.15);render()};$('minus').onclick=()=>{scale=Math.max(.5,scale-.15);render()};
-$('fit').onclick=async()=>{if(!pdf)return;const pg=await pdf.getPage(p),v=pg.getViewport({scale:1});scale=Math.min((stage.clientWidth-16)/v.width,(window.innerHeight*.64)/v.height);render()};
-$('width').onclick=async()=>{if(!pdf)return;const pg=await pdf.getPage(p),v=pg.getViewport({scale:1});scale=(stage.clientWidth-16)/v.width;render()};
+$('plus').onclick=()=>{mode='manual';scale=Math.min(3,scale+.15);render()};$('minus').onclick=()=>{mode='manual';scale=Math.max(.35,scale-.15);render()};
+$('fit').onclick=()=>{mode='fit';render()};
+$('width').onclick=()=>{mode='width';render()};
 function saveNote(){if(key)localStorage.setItem(key+'-'+p,$('note').value)}function loadNote(){$('note').value=key?(localStorage.getItem(key+'-'+p)||''):''}$('note').addEventListener('input',saveNote);
-window.addEventListener('resize',()=>{if(pdf&&window.innerWidth<700)render()});
+let rt;window.addEventListener('resize',()=>{clearTimeout(rt);rt=setTimeout(()=>{if(pdf&&mode!=='manual')render()},120)});
 </script></body></html>
