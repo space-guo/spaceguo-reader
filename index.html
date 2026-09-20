@@ -17,20 +17,34 @@ canvas{display:block;background:white;box-shadow:0 4px 24px #0006;max-width:100%
 <section id="home" class="home"><div class="hero"><small>SPACE GUO KNOWLEDGE</small><h1>읽고, 생각하고,<br>공간구오의 지식으로.</h1><p>책과 자료를 읽으며 메모하고, 앞으로 Obsidian과 AI 지식 시스템으로 연결하는 개인 서재입니다.</p><div class="home-actions"><button onclick="openReaderPicker()">+ PDF 추가</button><button onclick="showReader()">이어 읽기</button></div></div><div class="continue-card"><small>최근 읽던 책</small><h3 id="homeBook">PDF를 추가해 시작하세요</h3><div class="progress"><i id="homeProgress"></i></div><p id="homeMeta">아직 열린 책이 없습니다.</p></div></section>
 <main id="reader" class="hidden"><div class="toolbar">
 <label class="filebtn">PDF 열기<input id="file" type="file" accept="application/pdf"></label>
-<button id="fit">화면 맞춤</button><button id="width">너비 맞춤</button>
+<button id="fit">화면 맞춤</button><button id="width">너비 맞춤</button><button id="ocr" class="primary">OCR 텍스트 변환</button>
 <button id="minus">−</button><span id="zoom">100%</span><button id="plus">＋</button>
 <span id="status">PDF를 선택하세요.</span></div>
 <div class="stage" id="stage"><canvas id="canvas"></canvas></div>
 <div class="bottom"><button id="prev">‹ 이전</button><span class="page" id="page">0 / 0</span><button id="next">다음 ›</button></div>
 <div class="note"><b>현재 페이지 메모</b><textarea id="note" placeholder="읽으면서 떠오른 생각을 기록하세요. 기기에 자동 저장됩니다."></textarea></div>
-</main><nav class="bottomnav"><button id="navHome" class="active" onclick="showHome()">⌂<br>서재</button><button id="navRead" onclick="showReader()">▤<br>읽기</button><button disabled>▶<br>듣기</button><button disabled>✦<br>AI</button></nav>
+<section id="textView" class="home hidden"><div class="continue-card"><small>OCR / PDF 텍스트</small><h3>텍스트 읽기</h3><div id="ocrStatus" style="font-size:13px;color:#666;margin-bottom:12px">PDF를 연 뒤 OCR 텍스트 변환을 눌러주세요.</div><article id="ocrText" style="font-size:18px;line-height:1.9;white-space:pre-wrap;word-break:keep-all"></article><div style="margin-top:16px"><button onclick="showReader()">원본 PDF로 돌아가기</button></div></div></section></main><nav class="bottomnav"><button id="navHome" class="active" onclick="showHome()">⌂<br>서재</button><button id="navRead" onclick="showReader()">▤<br>읽기</button><button disabled>▶<br>듣기</button><button disabled>✦<br>AI</button></nav>
 <script>
 pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 let pdf=null,p=1,scale=1.15,rendering=false,pending=false,bytes=null,key='',mode='fit';
 const $=id=>document.getElementById(id), canvas=$('canvas'), stage=$('stage');
-function showHome(){$('home').classList.remove('hidden');$('reader').classList.add('hidden');$('navHome').classList.add('active');$('navRead').classList.remove('active')}
-function showReader(){$('home').classList.add('hidden');$('reader').classList.remove('hidden');$('navRead').classList.add('active');$('navHome').classList.remove('active');if(pdf)setTimeout(render,50)}
+function showHome(){$('textView').classList.add('hidden');$('home').classList.remove('hidden');$('reader').classList.add('hidden');$('navHome').classList.add('active');$('navRead').classList.remove('active')}
+function showReader(){$('textView').classList.add('hidden');$('home').classList.add('hidden');$('reader').classList.remove('hidden');$('navRead').classList.add('active');$('navHome').classList.remove('active');if(pdf)setTimeout(render,50)}
 function openReaderPicker(){showReader();setTimeout(()=>$('file').click(),80)}
+async function convertText(){
+ if(!pdf){$('status').textContent='먼저 PDF를 열어주세요.';return}
+ $('ocr').disabled=true;$('ocr').textContent='변환 중…';$('status').textContent='현재 페이지 텍스트 추출 중…';
+ try{
+  const pg=await pdf.getPage(p),tc=await pg.getTextContent();
+  let txt=tc.items.map(x=>x.str).join(' ').replace(/\s+/g,' ').trim();
+  if(!txt){txt='이 페이지에는 추출 가능한 텍스트 레이어가 없습니다. 스캔 이미지 OCR은 다음 단계에서 서버 OCR로 연결합니다.'}
+  $('ocrText').textContent=txt;$('ocrStatus').textContent='원본 PDF '+p+'페이지 · '+txt.length+'자';
+  $('reader').classList.add('hidden');$('home').classList.add('hidden');$('textView').classList.remove('hidden');
+  $('navRead').classList.add('active');$('navHome').classList.remove('active');
+ }catch(e){$('status').textContent='텍스트 변환 오류: '+e.message}
+ finally{$('ocr').disabled=false;$('ocr').textContent='OCR 텍스트 변환'}
+}
+$('ocr').onclick=convertText;
 
 async function render(){if(!pdf)return;if(rendering){pending=true;return}rendering=true;$('status').textContent='페이지 렌더링 중…';
 try{const page=await pdf.getPage(p);const base=page.getViewport({scale:1});const availW=Math.max(120,stage.clientWidth-24),availH=Math.max(160,window.innerHeight*.64);let s=scale;
